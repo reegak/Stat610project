@@ -1,0 +1,96 @@
+---
+title: "multiple_logistic"
+author: "610 group"
+date: "November 24, 2018"
+output: html_document
+---
+
+Setting up
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ROCR)
+library(ggplot2)
+library(caret)
+```
+
+
+We know the num and the trestbps (resting blood pressure) variables from the last video. Now we will ad some more variables to see if we can make a more accurate model. We will only be working the continuous variables in this video. We will also look at age and thalach (max heart rate achieved). The main difference is the model building process. 
+```{r}
+heart = read.csv("C:/Users/mitch/Documents/School/610_project/heart.csv") 
+heart$num = ifelse(heart$num=="No.Risk", 0,1) 
+heart = heart %>% select(num, trestbps, thalach, Age)
+```
+
+Before making the model we want to make sure that variables we use are not too correlated. It looks like were good for these variables. 
+```{r}
+df = heart %>% select(-num)
+cov = cor(df)
+cov
+```
+
+Here we subset the data to make a model with. Then we make a model with an interaction term just like in normal regression. This output is very similar to a linear model. Things aren't significant here, I'll drop the interaction and age.  
+```{r}
+set.seed(1)
+hearttrain = sample(303,303*(2/3))
+model = glm(num~trestbps + thalach + Age + trestbps*thalach, data = heart,family="binomial", subset = hearttrain)
+summary(model)
+```
+
+We will drop age and try adding an interaction term between thalach and trestbps. To interpet, e^(.018) = 1.018 is the increase in the odds of being at risk of heart disease as blood pressure increases by 1 and resting heart rate stays constant. If you convert that to probability we have that for each 1 unit increase in blood pressure while resting heart rate stays constant, you have a .018 increase in probability of being at risk of heart disease. To talk about both betas, e^(.018 + -.041) =  .977 is the decrease in the odds of being at risk of heart disease as blood pressure increases by 1 and resting heart rate increases by 1. After converting to probability we have that for each 1 unit increase in blood pressure and resting heart rate, you have a .023 decrease in probability of being at risk of heart disease. So having a higher resting heart rate is good. 
+```{r}
+model = glm(num~trestbps + thalach, data = heart,family="binomial", subset = hearttrain)
+summary(model)
+
+```
+
+Now we can make predictions for the data that we didn't use to make the model.
+```{r}
+predicts = predict(model,heart[-hearttrain,], type = "response")
+data = data.frame(heart[-hearttrain,],predicts)
+head(data)
+```
+
+We need to find the cutoff point once again. This is done by looksing at a graph of the sensitivity and specificity and seeing where they are equal. 
+```{r}
+predictions <- prediction(predicts,heart[-hearttrain,]$num)
+
+plot(unlist(performance(predictions, "sens")@x.values), unlist(performance(predictions, "sens")@y.values), 
+     type="l", lwd=2, ylab="Specificity", xlab="Cutoff")
+par(new=TRUE)
+plot(unlist(performance(predictions, "spec")@x.values), unlist(performance(predictions, "spec")@y.values), 
+     type="l", lwd=2, col='red', ylab="", xlab="")
+axis(4, at=seq(0,1,0.2))
+mtext("Specificity",side=4, padj=-2, col='red')
+```
+
+Here we put the predictions and truths in one dataframe
+```{r}
+plot.mpp <- data.frame(prediction = predicts, truth = factor(heart[-hearttrain,]$num, labels=c("norisk", "risk")))
+```
+
+This plots the probabilites and the cutoff line to visualize how good our predictions are.
+```{r}
+ggplot(plot.mpp, aes(x=truth, y=prediction, fill=truth)) + geom_jitter(width=.2) + geom_violin(alpha=.4) + theme_bw() + geom_hline(yintercept=.42)
+```
+
+Here we get the specificity and sensitivity.
+```{r}
+plot.mpp$pred.class <- ifelse(plot.mpp$prediction <.42, 0,1) 
+plot.mpp$pred.class <- factor(plot.mpp$pred.class, labels=c("norisk", "risk"))
+confusionMatrix(plot.mpp$pred.class, plot.mpp$truth, positive="risk")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
